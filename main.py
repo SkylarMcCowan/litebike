@@ -266,11 +266,20 @@ def main_game(level, score, high_scores):
     """Main game loop."""
     running = True
     player_pos = [SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2]
-    cpu_pos = [3 * SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2]
     player_direction = (PLAYER_SPEED, 0)  # Start moving right
-    cpu_direction = random.choice([(CPU_SPEED, 0), (-CPU_SPEED, 0), (0, CPU_SPEED), (0, -CPU_SPEED)])  # Random start
     player_trail = []
-    cpu_trail = []
+
+    # Initialize CPU players
+    num_cpus = 1 + (level - 1) // 5  # Add an additional CPU every 5 levels
+    cpu_positions = [
+        [3 * SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2 + i * GRID_SIZE * 5]
+        for i in range(num_cpus)
+    ]
+    cpu_directions = [
+        random.choice([(CPU_SPEED, 0), (-CPU_SPEED, 0), (0, CPU_SPEED), (0, -CPU_SPEED)])
+        for _ in range(num_cpus)
+    ]
+    cpu_trails = [[] for _ in range(num_cpus)]
 
     # Play start tone
     start_tone.play()
@@ -300,27 +309,32 @@ def main_game(level, score, high_scores):
         player_pos[0] += player_direction[0]
         player_pos[1] += player_direction[1]
 
-        # Update CPU position
-        cpu_direction = get_safe_cpu_direction(cpu_pos, cpu_direction, player_trail, cpu_trail)
-        cpu_pos[0] += cpu_direction[0]
-        cpu_pos[1] += cpu_direction[1]
+        # Update CPU positions
+        for i in range(num_cpus):
+            cpu_directions[i] = get_safe_cpu_direction(
+                cpu_positions[i], cpu_directions[i], player_trail, sum(cpu_trails, [])
+            )
+            cpu_positions[i][0] += cpu_directions[i][0]
+            cpu_positions[i][1] += cpu_directions[i][1]
 
         # Add positions to trails
         player_trail.append(tuple(player_pos))
-        cpu_trail.append(tuple(cpu_pos))
+        for i in range(num_cpus):
+            cpu_trails[i].append(tuple(cpu_positions[i]))
 
         # Update score for distance traveled
         score += 1
 
         # Check for collisions
-        if is_collision(tuple(player_pos), player_trail[:-1] + cpu_trail):
+        if is_collision(tuple(player_pos), player_trail[:-1] + sum(cpu_trails, [])):
             collision_tone.play()  # Play collision tone
             return False, score  # Indicate the player lost
 
-        if is_collision(tuple(cpu_pos), cpu_trail[:-1] + player_trail):
-            collision_tone.play()  # Play collision tone
-            score += 100  # Bonus for destroying a CPU bike
-            return True, score  # Indicate the player won
+        for i in range(num_cpus):
+            if is_collision(tuple(cpu_positions[i]), cpu_trails[i][:-1] + player_trail):
+                collision_tone.play()  # Play collision tone
+                score += 100  # Bonus for destroying a CPU bike
+                return True, score  # Indicate the player won
 
         # Clear the screen
         screen.fill(BLACK)
@@ -334,12 +348,14 @@ def main_game(level, score, high_scores):
         # Draw the player and CPU trails
         for segment in player_trail:
             pygame.draw.rect(screen, BLUE, (*segment, GRID_SIZE, GRID_SIZE))
-        for segment in cpu_trail:
-            pygame.draw.rect(screen, RED, (*segment, GRID_SIZE, GRID_SIZE))
+        for trail in cpu_trails:
+            for segment in trail:
+                pygame.draw.rect(screen, RED, (*segment, GRID_SIZE, GRID_SIZE))
 
-        # Draw the player and CPU
+        # Draw the player and CPUs
         pygame.draw.rect(screen, GREEN, (*player_pos, GRID_SIZE, GRID_SIZE))
-        pygame.draw.rect(screen, RED, (*cpu_pos, GRID_SIZE, GRID_SIZE))
+        for pos in cpu_positions:
+            pygame.draw.rect(screen, RED, (*pos, GRID_SIZE, GRID_SIZE))
 
         # Draw the score
         draw_score(score)
@@ -374,6 +390,8 @@ def main():
         player_won, score = main_game(level, score, high_scores)
         if player_won:
             level += 1
+            draw_win_screen(level, score)
+            pygame.time.wait(3000)  # Pause for 3 seconds before the next level
         else:
             draw_defeat_screen(score, high_scores)
             break  # Return to the main menu after defeat
